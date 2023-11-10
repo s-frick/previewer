@@ -40,7 +40,7 @@ jobs:
         run: go version
 
       - name: Build
-        run: go build -o app -v ./...
+        run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app ./...
 
       # - name: Test with the Go CLI
       #   run: go test -json > TestResults-${{ matrix.go-version }}.json
