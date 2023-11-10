@@ -36,7 +36,7 @@ var (
 	outDir      string
 )
 
-func init() {
+func initFlags() {
 	flag.StringVar(&srcDir, "src", "", "Directory containing source files")
 	flag.StringVar(&templateDir, "templates", "", "Directory containing template files to render")
 	flag.StringVar(&outDir, "outDir", "", "Resized image target directory.")
@@ -49,6 +49,7 @@ func init() {
 }
 
 func main() {
+	initFlags()
 	items := findImages(srcDir)
 	resizedImg := resizeImages(items, outDir)
 	tpls := findTemplates(templateDir)
@@ -118,40 +119,45 @@ func findImages(srcDir string) []Img {
 func resizeImages(items []Img, targetPath string) []Image {
 	var resizedImg []Image
 	for _, item := range items {
-		input, err := os.Open(item.AbsPath)
-		if err != nil {
-			log.Printf("no such file: %s, %v", item.AbsPath, err)
-		}
-		defer input.Close()
-
-		targetDir := fmt.Sprintf("%s/%s", targetPath, item.RelPath)
-		if err := os.MkdirAll(targetDir, 0777); err != nil {
-			log.Println(err)
-		}
-		log.Printf(targetDir)
-
-		newFilename := strings.Replace(item.Filename, ".jpg", "__th__.jpg", 1)
-		log.Println(newFilename)
-		absPathOut := fmt.Sprintf("%s/%s", targetDir, newFilename)
-		output, err := os.Create(absPathOut)
-		if err != nil {
-			log.Println(err)
-		}
-		defer output.Close()
-
-		src, err := jpeg.Decode(input)
-		if err != nil {
-			log.Printf("image is not a jpeg, %v", err)
-		}
-
 		// maxWidth maxHeigth
-		dst := image.NewRGBA(image.Rect(0, 0, 160, 160))
-
-		draw.ApproxBiLinear.Scale(dst, dst.Rect, src, src.Bounds(), draw.Over, nil)
-
-		jpeg.Encode(output, dst, nil)
+		newFilename, absPathOut := resizeImage(item, targetPath)
 
 		resizedImg = append(resizedImg, Image{Origin: item, Resized: Img{AbsPath: absPathOut, RelPath: item.RelPath, Filename: newFilename}})
 	}
 	return resizedImg
+}
+
+func resizeImage(item Img, targetPath string) (string, string) {
+	input, err := os.Open(item.AbsPath)
+	if err != nil {
+		log.Printf("no such file: %s, %v", item.AbsPath, err)
+	}
+	defer input.Close()
+
+	targetDir := fmt.Sprintf("%s/%s", targetPath, item.RelPath)
+	if err := os.MkdirAll(targetDir, 0777); err != nil {
+		log.Println(err)
+	}
+	log.Printf(targetDir)
+
+	newFilename := strings.Replace(item.Filename, ".jpg", "__th__.jpg", 1)
+	log.Println(newFilename)
+	absPathOut := fmt.Sprintf("%s/%s", targetDir, newFilename)
+	output, err := os.Create(absPathOut)
+	if err != nil {
+		log.Println(err)
+	}
+	defer output.Close()
+
+	src, err := jpeg.Decode(input)
+	if err != nil {
+		log.Printf("image is not a jpeg, %v", err)
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, 160, 160))
+
+	draw.ApproxBiLinear.Scale(dst, dst.Rect, src, src.Bounds(), draw.Over, nil)
+
+	jpeg.Encode(output, dst, nil)
+	return newFilename, absPathOut
 }
