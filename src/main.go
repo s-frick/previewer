@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"io/fs"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,26 +35,30 @@ var (
 	srcDir      string
 	templateDir string
 	outDir      string
+	maxWidth    int
+	maxHeight   int
 )
 
 func initFlags() {
 	flag.StringVar(&srcDir, "src", "", "Directory containing source files")
 	flag.StringVar(&templateDir, "templates", "", "Directory containing template files to render")
 	flag.StringVar(&outDir, "outDir", "", "Resized image target directory.")
+	flag.IntVar(&maxWidth, "maxWidth", 0, "maxWidth")
+	flag.IntVar(&maxHeight, "maxHeight", 0, "maxHeight")
 	flag.Parse()
 	if outDir == "" {
 		outDir = srcDir
 	}
-	log.Println("OUTDIR: ", outDir)
-	log.Println("SRCDIR: ", srcDir)
 }
 
 func main() {
 	initFlags()
 	items := findImages(srcDir)
 	resizedImg := resizeImages(items, outDir)
-	tpls := findTemplates(templateDir)
-	renderTemplates(tpls, resizedImg)
+	if templateDir != "" {
+		tpls := findTemplates(templateDir)
+		renderTemplates(tpls, resizedImg)
+	}
 }
 
 func findTemplates(templateDir string) []Tpl {
@@ -96,6 +101,9 @@ func renderTemplates(tpls []Tpl, imgs []Image) {
 	}
 }
 
+func isJpg(name string) bool {
+	return strings.HasSuffix(name, "jpg") || strings.HasSuffix(name, "jpeg")
+}
 func findImages(srcDir string) []Img {
 	var items []Img
 
@@ -103,7 +111,7 @@ func findImages(srcDir string) []Img {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && !strings.Contains(d.Name(), "__th__") {
+		if !d.IsDir() && !strings.Contains(d.Name(), "__th__") && isJpg(d.Name()) {
 			relPath := strings.Replace(path, srcDir+"/", "", 1)
 			relDir := strings.Replace(relPath, "/"+d.Name(), "", 1)
 			items = append(items, Img{AbsPath: path, RelPath: relDir, Filename: d.Name()})
@@ -119,12 +127,29 @@ func findImages(srcDir string) []Img {
 func resizeImages(items []Img, targetPath string) []Image {
 	var resizedImg []Image
 	for _, item := range items {
-		// maxWidth maxHeigth
 		newFilename, absPathOut := resizeImage(item, targetPath)
 
 		resizedImg = append(resizedImg, Image{Origin: item, Resized: Img{AbsPath: absPathOut, RelPath: item.RelPath, Filename: newFilename}})
 	}
 	return resizedImg
+}
+func scale(oldWidth int, oldHeight int, maxWidth int, maxHeight int) (width int, height int) {
+	if maxWidth == 0 && maxHeight == 0 {
+		maxWidth = oldWidth / 2
+		maxHeight = oldHeight / 2
+	}
+	if maxWidth == 0 {
+		maxWidth = math.MaxInt
+	}
+	if maxHeight == 0 {
+		maxHeight = math.MaxInt
+	}
+	ratioX := float32(maxWidth) / float32(oldWidth)
+	ratioY := float32(maxHeight) / float32(oldHeight)
+	ratio := min(ratioX, ratioY)
+	width = int(float32(oldWidth) * ratio)
+	height = int(float32(oldHeight) * ratio)
+	return width, height
 }
 
 func resizeImage(item Img, targetPath string) (string, string) {
@@ -154,7 +179,8 @@ func resizeImage(item Img, targetPath string) (string, string) {
 		log.Printf("image is not a jpeg, %v", err)
 	}
 
-	dst := image.NewRGBA(image.Rect(0, 0, 160, 160))
+	width, height := scale(src.Bounds().Dx(), src.Bounds().Dy(), maxHeight, maxWidth)
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	draw.ApproxBiLinear.Scale(dst, dst.Rect, src, src.Bounds(), draw.Over, nil)
 
